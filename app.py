@@ -428,7 +428,7 @@ def send_friend_request_with_retry(author_uid, target_uid, token, server_name=No
 # -----------------------------
 # API Routes - WITH RETRY
 # -----------------------------
-@app.route('/remove_friend', methods=['GET'])
+@app.route('/mafu-remove_friend', methods=['GET'])
 def remove_friend_api():
     """Remove friend using either token or UID/password - WITH RETRY"""
     token = request.args.get('token')
@@ -480,7 +480,7 @@ def remove_friend_api():
     result = remove_friend_with_retry(author_uid, player_id, token, server_name)
     return jsonify(result)
 
-@app.route('/add_friend', methods=['GET'])
+@app.route('/mafu-add_friend', methods=['GET'])
 def add_friend_api():
     """Add friend using either token or UID/password - WITH RETRY"""
     token = request.args.get('token')
@@ -524,7 +524,7 @@ def add_friend_api():
     result = send_friend_request_with_retry(author_uid, player_id, token, server_name)
     return jsonify(result)
 
-@app.route('/get_player_info', methods=['GET'])
+@app.route('/mafu_player_info', methods=['GET'])
 def get_player_info_api():
     """Get player information using either token or UID/password"""
     token = request.args.get('token')
