@@ -153,7 +153,7 @@ def try_platform_login(open_id, access_token, platform_type):
         game_data.timestamp = "2024-12-05 18:15:32"
         game_data.game_name = "free fire"
         game_data.game_version = 1
-        game_data.version_code = "1.120.2"
+        game_data.version_code = "1.123.2"
         game_data.os_info = "Android OS 9 / API-28 (PI/rel.cjw.20220518.114133)"
         game_data.device_type = "Handheld"
         game_data.network_provider = "Verizon Wireless"
@@ -187,7 +187,7 @@ def try_platform_login(open_id, access_token, platform_type):
             "Expect": "100-continue",
             "X-Unity-Version": "2018.4.11f1",
             "X-GA": "v1 1",
-            "ReleaseVersion": "OB52"
+            "ReleaseVersion": "OB53"
         }
         
         edata = bytes.fromhex(hex_encrypted_data)
@@ -261,7 +261,7 @@ def get_player_info(target_uid, token, server_name=None):
             'Expect': "100-continue",
             'X-Unity-Version': "2018.4.11f1",
             'X-GA': "v1 1",
-            'ReleaseVersion': "OB52"
+            'ReleaseVersion': "OB53"
         }
 
         response = requests.post(endpoint, data=bytes.fromhex(encrypted_data), headers=headers, verify=False)
@@ -386,7 +386,7 @@ def send_friend_request_with_retry(author_uid, target_uid, token, server_name=No
             "Authorization": f"Bearer {token}",
             "X-Unity-Version": "2018.4.11f1",
             "X-GA": "v1 1",
-            "ReleaseVersion": "OB52",
+            "ReleaseVersion": "OB53",
             "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": "Dalvik/2.1.0 (Linux; Android 9)"
         }
