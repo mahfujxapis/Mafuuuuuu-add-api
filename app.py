@@ -19,7 +19,6 @@ import warnings
 # -----------------------------
 # Security Warnings Disable
 # -----------------------------
-# HTTPS warnings disable karo
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.filterwarnings("ignore", category=UserWarning, message="Unverified HTTPS request")
 
@@ -50,7 +49,7 @@ def get_base_url(server_name):
     elif server_name in {"BR", "US", "SAC", "NA"}:
         return "https://client.us.freefiremobile.com/"
     else:
-        return "https://clientbp.ggblueshark.com/"
+        return "https://clientbp.ggpolarbear.com/"
 
 def get_server_from_token(token):
     """Extract server region from JWT token"""
@@ -62,7 +61,7 @@ def get_server_from_token(token):
         return "IND"
 
 # -----------------------------
-# Retry Decorator - 10 baar try karega
+# Retry Decorator
 # -----------------------------
 def retry_operation(max_retries=10, delay=1):
     def decorator(func):
@@ -73,7 +72,6 @@ def retry_operation(max_retries=10, delay=1):
                     result = func(*args, **kwargs)
                     if result and result.get('status') in ['success', 'failed']:
                         return result
-                    # Agar result nahi aaya toh retry karo
                     print(f"Attempt {attempt + 1}/{max_retries} failed, retrying...")
                 except Exception as e:
                     last_exception = e
@@ -82,7 +80,6 @@ def retry_operation(max_retries=10, delay=1):
                 if attempt < max_retries - 1:
                     time.sleep(delay)
             
-            # Agar 10 baar mein bhi fail hua toh last error return karo
             if last_exception:
                 return {
                     "status": "error",
@@ -97,10 +94,10 @@ def retry_operation(max_retries=10, delay=1):
     return decorator
 
 # -----------------------------
-# JWT Token Generation Functions - FIXED
+# JWT Token Generation Functions
 # -----------------------------
 def get_token_from_uid_password(uid, password):
-    """Get JWT token using UID and password - FIXED VERSION"""
+    """Get JWT token using UID and password"""
     try:
         oauth_url = "https://100067.connect.garena.com/oauth/guest/token/grant"
         payload = {
@@ -129,7 +126,6 @@ def get_token_from_uid_password(uid, password):
         access_token = oauth_data['access_token']
         open_id = oauth_data.get('open_id', '')
         
-        # Try platforms with the obtained credentials
         platforms = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
         
         for platform_type in platforms:
@@ -147,10 +143,10 @@ def get_token_from_uid_password(uid, password):
         return None, f"Unexpected error: {str(e)}"
 
 def try_platform_login(open_id, access_token, platform_type):
-    """Try login for a specific platform - IMPROVED VERSION"""
+    """Try login for a specific platform"""
     try:
         game_data = my_pb2.GameData()
-        game_data.timestamp = "2024-12-05 18:15:32"
+        game_data.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         game_data.game_name = "free fire"
         game_data.game_version = 1
         game_data.version_code = "1.123.2"
@@ -196,7 +192,6 @@ def try_platform_login(open_id, access_token, platform_type):
         response.raise_for_status()
 
         if response.status_code == 200:
-            # Parse response
             data_dict = None
             try:
                 example_msg = output_pb2.Garena_420()
@@ -306,16 +301,16 @@ def decode_author_uid(token):
         return None
 
 # -----------------------------
-# Friend Management Functions - WITH RETRY
+# Friend Management Functions - FIXED RESPONSE FORMAT
 # -----------------------------
 @retry_operation(max_retries=10, delay=1)
 def remove_friend_with_retry(author_uid, target_uid, token, server_name=None):
-    """Remove friend with retry mechanism"""
+    """Remove friend with retry mechanism - EXACT RESPONSE FORMAT"""
     try:
         if not server_name:
             server_name = get_server_from_token(token)
             
-        # Get player info
+        # Get player info for real-time data
         player_info = get_player_info(target_uid, token, server_name)
         
         msg = RemoveFriend_Req_pb2.RemoveFriend()
@@ -330,12 +325,12 @@ def remove_friend_with_retry(author_uid, target_uid, token, server_name=None):
             'Content-Type': "application/x-www-form-urlencoded",
             'X-Unity-Version': "2018.4.11f1",
             'X-GA': "v1 1",
-            'ReleaseVersion': "OB52"
+            'ReleaseVersion': "OB53"
         }
 
         res = requests.post(url, data=encrypted_bytes, headers=headers, verify=False)
         
-        # Extract player info
+        # Get real-time player data
         player_data = None
         if player_info:
             player_data = extract_player_info(player_info)
@@ -345,10 +340,9 @@ def remove_friend_with_retry(author_uid, target_uid, token, server_name=None):
             status = "success"
         else:
             status = "failed"
-            # Force retry by raising exception
             raise Exception(f"HTTP {res.status_code}: {res.text}")
         
-        # Simplified response format
+        # EXACT response format - only these fields, with real-time data
         response_data = {
             "author_uid": author_uid,
             "nickname": player_data.get('nickname') if player_data else "Unknown",
@@ -365,16 +359,16 @@ def remove_friend_with_retry(author_uid, target_uid, token, server_name=None):
 
     except Exception as e:
         print(f"Remove friend error: {e}")
-        raise e  # Retry ke liye exception raise karo
+        raise e
 
 @retry_operation(max_retries=10, delay=1)
 def send_friend_request_with_retry(author_uid, target_uid, token, server_name=None):
-    """Send friend request with retry mechanism"""
+    """Send friend request with retry mechanism - EXACT RESPONSE FORMAT"""
     try:
         if not server_name:
             server_name = get_server_from_token(token)
             
-        # Get player info
+        # Get player info for real-time data
         player_info = get_player_info(target_uid, token, server_name)
         
         encrypted_id = Encrypt_ID(target_uid)
@@ -393,7 +387,7 @@ def send_friend_request_with_retry(author_uid, target_uid, token, server_name=No
 
         r = requests.post(url, headers=headers, data=bytes.fromhex(encrypted_payload), verify=False)
         
-        # Extract player info
+        # Get real-time player data
         player_data = None
         if player_info:
             player_data = extract_player_info(player_info)
@@ -403,10 +397,9 @@ def send_friend_request_with_retry(author_uid, target_uid, token, server_name=No
             status = "success"
         else:
             status = "failed"
-            # Force retry by raising exception
             raise Exception(f"HTTP {r.status_code}: {r.text}")
         
-        # Simplified response format
+        # EXACT response format - only these fields, with real-time data
         response_data = {
             "author_uid": author_uid,
             "nickname": player_data.get('nickname') if player_data else "Unknown",
@@ -423,30 +416,27 @@ def send_friend_request_with_retry(author_uid, target_uid, token, server_name=No
         
     except Exception as e:
         print(f"Add friend error: {e}")
-        raise e  # Retry ke liye exception raise karo
+        raise e
 
 # -----------------------------
-# API Routes - WITH RETRY
+# API Routes
 # -----------------------------
-@app.route('/mafu-remove_friend', methods=['GET'])
+@app.route('/mafu-_friend', methods=['GET'])
 def remove_friend_api():
-    """Remove friend using either token or UID/password - WITH RETRY"""
+    """Remove friend using either token or UID/password"""
     token = request.args.get('token')
     player_id = request.args.get('player_id')
     uid = request.args.get('uid')
     password = request.args.get('password')
     server_name = request.args.get('server_name')
 
-    # Validate input
     if not player_id:
         return jsonify({
             "status": "failed",
             "message": "Missing 'player_id'"
         }), 400
 
-    # Get token from either direct token or UID/password
     if token:
-        # Use provided token directly
         author_uid = decode_author_uid(token)
         if not author_uid:
             return jsonify({
@@ -454,7 +444,6 @@ def remove_friend_api():
                 "message": "Invalid token"
             }), 400
     elif uid and password:
-        # Generate token from UID/password - FIXED
         print(f"Attempting to generate token for UID: {uid}")
         token, error = get_token_from_uid_password(uid, password)
         if error:
@@ -476,29 +465,25 @@ def remove_friend_api():
             "message": "Either 'token' or 'uid' and 'password' must be provided"
         }), 400
 
-    # Retry mechanism ke saath remove friend call karo
     result = remove_friend_with_retry(author_uid, player_id, token, server_name)
     return jsonify(result)
 
 @app.route('/mafu-add_friend', methods=['GET'])
 def add_friend_api():
-    """Add friend using either token or UID/password - WITH RETRY"""
+    """Add friend using either token or UID/password"""
     token = request.args.get('token')
     player_id = request.args.get('player_id')
     uid = request.args.get('uid')
     password = request.args.get('password')
     server_name = request.args.get('server_name')
 
-    # Validate input
     if not player_id:
         return jsonify({
             "status": "failed",
             "message": "Missing 'player_id'"
         }), 400
 
-    # Get token from either direct token or UID/password
     if token:
-        # Use provided token directly
         author_uid = decode_author_uid(token)
         if not author_uid:
             return jsonify({
@@ -506,7 +491,6 @@ def add_friend_api():
                 "message": "Invalid token"
             }), 400
     elif uid and password:
-        # Generate token from UID/password
         token, error = get_token_from_uid_password(uid, password)
         if error:
             return jsonify({
@@ -520,11 +504,10 @@ def add_friend_api():
             "message": "Either 'token' or 'uid' and 'password' must be provided"
         }), 400
 
-    # Retry mechanism ke saath add friend call karo
     result = send_friend_request_with_retry(author_uid, player_id, token, server_name)
     return jsonify(result)
 
-@app.route('/mafu_player_info', methods=['GET'])
+@app.route('/get_player_info', methods=['GET'])
 def get_player_info_api():
     """Get player information using either token or UID/password"""
     token = request.args.get('token')
@@ -536,7 +519,6 @@ def get_player_info_api():
     if not player_id:
         return jsonify({"status": "failed", "message": "Missing 'player_id'"}), 400
 
-    # Get token from either direct token or UID/password
     if not token and uid and password:
         token, error = get_token_from_uid_password(uid, password)
         if error:
@@ -553,20 +535,24 @@ def get_player_info_api():
     if not player_data:
         return jsonify({"status": "failed", "message": "Failed to extract player info"}), 400
 
-    # Add timestamp and format response
-    player_data.update({
+    # EXACT response format with real-time data
+    response_data = {
+        "author_uid": decode_author_uid(token),
+        "nickname": player_data.get('nickname', 'Unknown'),
+        "uid": player_data.get('uid', player_id),
+        "level": player_data.get('level', 0),
+        "likes": player_data.get('likes', 0),
+        "region": player_data.get('region', 'Unknown'),
+        "release_version": player_data.get('release_version', 'Unknown'),
         "status": "success",
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
+    }
     
-    return jsonify(player_data)
+    return jsonify(response_data)
 
-# -----------------------------
-# JWT Generation Routes (Optional)
-# -----------------------------
 @app.route('/token', methods=['GET'])
 def oauth_guest():
-    """Get token using UID and password - FIXED"""
+    """Get token using UID and password"""
     uid = request.args.get('uid')
     password = request.args.get('password')
     
@@ -577,7 +563,6 @@ def oauth_guest():
     if error:
         return jsonify({"message": error}), 400
         
-    # Verify the token is valid
     author_uid = decode_author_uid(token)
     if not author_uid:
         return jsonify({"message": "Generated token is invalid"}), 400
@@ -595,15 +580,9 @@ def health_check():
 
 # -----------------------------
 # Run Server
-# ----------------------------
-# === Startup ===
-import sys
-
+# -----------------------------
 if __name__ == '__main__':
+    import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-    print(f"[🚀] Starting {__name__.upper()} on port {port} ...")
-    try:
-        asyncio.run(startup())
-    except Exception as e:
-        print(f"[⚠️] Startup warning: {e} — continuing without full initialization")
+    print(f"[🚀] Starting API on port {port} ...")
     app.run(host='0.0.0.0', port=port, debug=False)
