@@ -2,9 +2,9 @@ from flask import Flask, request, jsonify
 import jwt
 import requests
 from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
+from Crypto.Util.Padding import pad, unpad
 import RemoveFriend_Req_pb2
-from byte import Encrypt_ID, encrypt_api
+from byte import Encrypt_ID, encrypt_api, decrypt_api
 import binascii
 import data_pb2
 import uid_generator_pb2
@@ -33,6 +33,11 @@ AES_IV = bytes([54, 111, 121, 90, 68, 114, 50, 50, 69, 51, 121, 99, 104, 106, 77
 def encrypt_message(data_bytes):
     cipher = AES.new(AES_KEY, AES.MODE_CBC, AES_IV)
     return cipher.encrypt(pad(data_bytes, AES.block_size))
+
+def decrypt_message(encrypted_bytes):
+    cipher = AES.new(AES_KEY, AES.MODE_CBC, AES_IV)
+    decrypted = cipher.decrypt(encrypted_bytes)
+    return unpad(decrypted, AES.block_size)
 
 def encrypt_message_hex(data_bytes):
     cipher = AES.new(AES_KEY, AES.MODE_CBC, AES_IV)
@@ -229,7 +234,7 @@ def try_platform_login(open_id, access_token, platform_type):
         return None
 
 # -----------------------------
-# Player Info Functions
+# Player Info Functions - FIXED
 # -----------------------------
 def create_info_protobuf(uid):
     message = uid_generator_pb2.uid_generator()
@@ -238,7 +243,7 @@ def create_info_protobuf(uid):
     return message.SerializeToString()
 
 def get_player_info(target_uid, token, server_name=None):
-    """Get detailed player information"""
+    """Get detailed player information - FIXED VERSION"""
     try:
         if not server_name:
             server_name = get_server_from_token(token)
@@ -259,18 +264,28 @@ def get_player_info(target_uid, token, server_name=None):
             'ReleaseVersion': "OB53"
         }
 
-        response = requests.post(endpoint, data=bytes.fromhex(encrypted_data), headers=headers, verify=False)
+        response = requests.post(endpoint, data=bytes.fromhex(encrypted_data), headers=headers, verify=False, timeout=10)
         
         if response.status_code != 200:
+            print(f"Player info API returned status: {response.status_code}")
             return None
 
-        hex_response = response.content.hex()
-        binary = bytes.fromhex(hex_response)
-        
-        info = data_pb2.AccountPersonalShowInfo()
-        info.ParseFromString(binary)
-        
-        return info
+        # Decrypt the response
+        try:
+            decrypted_data = decrypt_message(response.content)
+            info = data_pb2.AccountPersonalShowInfo()
+            info.ParseFromString(decrypted_data)
+            return info
+        except Exception as e:
+            print(f"Failed to decrypt/parse player info: {e}")
+            # Try without decryption
+            try:
+                info = data_pb2.AccountPersonalShowInfo()
+                info.ParseFromString(response.content)
+                return info
+            except:
+                return None
+            
     except Exception as e:
         print(f"Error getting player info: {e}")
         return None
@@ -280,15 +295,30 @@ def extract_player_info(info_data):
     if not info_data:
         return None
 
-    basic_info = info_data.basic_info
-    return {
-        'uid': basic_info.account_id,
-        'nickname': basic_info.nickname,
-        'level': basic_info.level,
-        'region': basic_info.region,
-        'likes': basic_info.liked,
-        'release_version': basic_info.release_version
-    }
+    try:
+        basic_info = info_data.basic_info
+        return {
+            'uid': basic_info.account_id,
+            'nickname': basic_info.nickname,
+            'level': basic_info.level,
+            'region': basic_info.region,
+            'likes': basic_info.liked,
+            'release_version': basic_info.release_version
+        }
+    except Exception as e:
+        print(f"Error extracting player info: {e}")
+        # Try alternative extraction
+        try:
+            return {
+                'uid': info_data.basic_info.account_id if hasattr(info_data, 'basic_info') else 0,
+                'nickname': info_data.basic_info.nickname if hasattr(info_data, 'basic_info') else "Unknown",
+                'level': info_data.basic_info.level if hasattr(info_data, 'basic_info') else 0,
+                'region': info_data.basic_info.region if hasattr(info_data, 'basic_info') else "Unknown",
+                'likes': info_data.basic_info.liked if hasattr(info_data, 'basic_info') else 0,
+                'release_version': info_data.basic_info.release_version if hasattr(info_data, 'basic_info') else "Unknown"
+            }
+        except:
+            return None
 
 # -----------------------------
 # Authentication Helper Functions
@@ -301,18 +331,26 @@ def decode_author_uid(token):
         return None
 
 # -----------------------------
-# Friend Management Functions - FIXED RESPONSE FORMAT
+# Friend Management Functions - REAL DATA FETCHING
 # -----------------------------
-@retry_operation(max_retries=10, delay=1)
+@retry_operation(max_retries=10, delay=2)
 def remove_friend_with_retry(author_uid, target_uid, token, server_name=None):
-    """Remove friend with retry mechanism - EXACT RESPONSE FORMAT"""
+    """Remove friend with retry mechanism - FETCHES REAL DATA"""
     try:
         if not server_name:
             server_name = get_server_from_token(token)
-            
-        # Get player info for real-time data
-        player_info = get_player_info(target_uid, token, server_name)
         
+        # First, get player info to fetch REAL data
+        print(f"Fetching player info for UID: {target_uid}")
+        player_info = get_player_info(target_uid, token, server_name)
+        player_data = extract_player_info(player_info)
+        
+        if player_data:
+            print(f"Got real player data: {player_data}")
+        else:
+            print("Failed to get player data, will use defaults")
+        
+        # Now perform the remove friend operation
         msg = RemoveFriend_Req_pb2.RemoveFriend()
         msg.AuthorUid = int(author_uid)
         msg.TargetUid = int(target_uid)
@@ -328,12 +366,7 @@ def remove_friend_with_retry(author_uid, target_uid, token, server_name=None):
             'ReleaseVersion': "OB53"
         }
 
-        res = requests.post(url, data=encrypted_bytes, headers=headers, verify=False)
-        
-        # Get real-time player data
-        player_data = None
-        if player_info:
-            player_data = extract_player_info(player_info)
+        res = requests.post(url, data=encrypted_bytes, headers=headers, verify=False, timeout=10)
         
         # Check if successful
         if res.status_code == 200:
@@ -342,15 +375,15 @@ def remove_friend_with_retry(author_uid, target_uid, token, server_name=None):
             status = "failed"
             raise Exception(f"HTTP {res.status_code}: {res.text}")
         
-        # EXACT response format - only these fields, with real-time data
+        # Build response with REAL data
         response_data = {
-            "author_uid": author_uid,
-            "nickname": player_data.get('nickname') if player_data else "Unknown",
-            "uid": target_uid,
-            "level": player_data.get('level') if player_data else 0,
-            "likes": player_data.get('likes') if player_data else 0,
-            "region": player_data.get('region') if player_data else "Unknown",
-            "release_version": player_data.get('release_version') if player_data else "Unknown",
+            "author_uid": int(author_uid),
+            "nickname": player_data['nickname'] if player_data else "Unknown",
+            "uid": str(target_uid),
+            "level": player_data['level'] if player_data else 0,
+            "likes": player_data['likes'] if player_data else 0,
+            "region": player_data['region'] if player_data else "Unknown",
+            "release_version": player_data['release_version'] if player_data else "Unknown",
             "status": status,
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -361,16 +394,24 @@ def remove_friend_with_retry(author_uid, target_uid, token, server_name=None):
         print(f"Remove friend error: {e}")
         raise e
 
-@retry_operation(max_retries=10, delay=1)
+@retry_operation(max_retries=10, delay=2)
 def send_friend_request_with_retry(author_uid, target_uid, token, server_name=None):
-    """Send friend request with retry mechanism - EXACT RESPONSE FORMAT"""
+    """Send friend request with retry mechanism - FETCHES REAL DATA"""
     try:
         if not server_name:
             server_name = get_server_from_token(token)
-            
-        # Get player info for real-time data
-        player_info = get_player_info(target_uid, token, server_name)
         
+        # First, get player info to fetch REAL data
+        print(f"Fetching player info for UID: {target_uid}")
+        player_info = get_player_info(target_uid, token, server_name)
+        player_data = extract_player_info(player_info)
+        
+        if player_data:
+            print(f"Got real player data: {player_data}")
+        else:
+            print("Failed to get player data, will use defaults")
+        
+        # Now perform the add friend operation
         encrypted_id = Encrypt_ID(target_uid)
         payload = f"08a7c4839f1e10{encrypted_id}1801"
         encrypted_payload = encrypt_api(payload)
@@ -385,12 +426,7 @@ def send_friend_request_with_retry(author_uid, target_uid, token, server_name=No
             "User-Agent": "Dalvik/2.1.0 (Linux; Android 9)"
         }
 
-        r = requests.post(url, headers=headers, data=bytes.fromhex(encrypted_payload), verify=False)
-        
-        # Get real-time player data
-        player_data = None
-        if player_info:
-            player_data = extract_player_info(player_info)
+        r = requests.post(url, headers=headers, data=bytes.fromhex(encrypted_payload), verify=False, timeout=10)
         
         # Check if successful
         if r.status_code == 200:
@@ -399,15 +435,15 @@ def send_friend_request_with_retry(author_uid, target_uid, token, server_name=No
             status = "failed"
             raise Exception(f"HTTP {r.status_code}: {r.text}")
         
-        # EXACT response format - only these fields, with real-time data
+        # Build response with REAL data
         response_data = {
-            "author_uid": author_uid,
-            "nickname": player_data.get('nickname') if player_data else "Unknown",
-            "uid": target_uid,
-            "level": player_data.get('level') if player_data else 0,
-            "likes": player_data.get('likes') if player_data else 0,
-            "region": player_data.get('region') if player_data else "Unknown",
-            "release_version": player_data.get('release_version') if player_data else "Unknown",
+            "author_uid": int(author_uid),
+            "nickname": player_data['nickname'] if player_data else "Unknown",
+            "uid": str(target_uid),
+            "level": player_data['level'] if player_data else 0,
+            "likes": player_data['likes'] if player_data else 0,
+            "region": player_data['region'] if player_data else "Unknown",
+            "release_version": player_data['release_version'] if player_data else "Unknown",
             "status": status,
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -535,11 +571,11 @@ def get_player_info_api():
     if not player_data:
         return jsonify({"status": "failed", "message": "Failed to extract player info"}), 400
 
-    # EXACT response format with real-time data
+    # Response with REAL data in exact format
     response_data = {
         "author_uid": decode_author_uid(token),
         "nickname": player_data.get('nickname', 'Unknown'),
-        "uid": player_data.get('uid', player_id),
+        "uid": str(player_data.get('uid', player_id)),
         "level": player_data.get('level', 0),
         "likes": player_data.get('likes', 0),
         "region": player_data.get('region', 'Unknown'),
@@ -585,4 +621,4 @@ if __name__ == '__main__':
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     print(f"[🚀] Starting API on port {port} ...")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=True)
