@@ -474,7 +474,7 @@ def send_friend_request_with_retry(author_uid, target_uid, token, server_name=No
 # -----------------------------
 # API Routes
 # -----------------------------
-@app.route('/mafu-_friend', methods=['GET'])
+@app.route('/mafu-remove_friend', methods=['GET'])
 def remove_friend_api():
     """Remove friend using either token or UID/password - WITH REAL-TIME DATA"""
     token = request.args.get('token')
